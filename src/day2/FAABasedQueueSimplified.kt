@@ -10,26 +10,44 @@ class FAABasedQueueSimplified<E> : Queue<E> {
     private val deqIdx = AtomicLong(0)
 
     override fun enqueue(element: E) {
-        // TODO: Increment the counter atomically via Fetch-and-Add.
-        // TODO: Use `getAndIncrement()` function for that.
-        val i = enqIdx.get()
-        enqIdx.set(i + 1)
-        // TODO: Atomically install the element into the cell
-        // TODO: if the cell is not poisoned.
-        infiniteArray.set(i.toInt(), element)
+        while (true) {
+            // TODO: Increment the counter atomically via Fetch-and-Add.
+            // TODO: Use `getAndIncrement()` function for that.
+            val i = enqIdx.getAndIncrement()
+            // TODO: Atomically install the element into the cell
+            // TODO: if the cell is not poisoned.
+            if (infiniteArray.compareAndSet(i.toInt(), null, element))
+                return
+        }
+    }
+
+    fun isQueueEmpty(): Boolean {
+        while (true) {
+            val enq = enqIdx.get()
+            val deq = deqIdx.get()
+            if (enq != enqIdx.get()) continue
+            return deq >= enq
+        }
     }
 
     @Suppress("UNCHECKED_CAST")
     override fun dequeue(): E? {
-        // Is this queue empty?
-        if (enqIdx.get() <= deqIdx.get()) return null
-        // TODO: Increment the counter atomically via Fetch-and-Add.
-        // TODO: Use `getAndIncrement()` function for that.
-        val i = deqIdx.get()
-        deqIdx.set(i + 1)
-        // TODO: Try to retrieve an element if the cell contains an
-        // TODO: element, poisoning the cell if it is empty.
-        return infiniteArray.get(i.toInt()) as E
+        while (true) {
+            // Is this queue empty?
+            if (isQueueEmpty()) return null
+            // TODO: Increment the counter atomically via Fetch-and-Add.
+            // TODO: Use `getAndIncrement()` function for that.
+            val i = deqIdx.getAndIncrement().toInt()
+
+            // TODO: Try to retrieve an element if the cell contains an
+            // TODO: element, poisoning the cell if it is empty.
+            if (infiniteArray.compareAndSet(i, null, POISONED)) {
+                continue
+            }
+            val value = infiniteArray.get(i) as E
+            if (infiniteArray.compareAndSet(i, value, null))
+                return value
+        }
     }
 
     override fun validate() {
