@@ -124,27 +124,26 @@ class MSQueueWithLinearTimeNonParallelRemove<E> : QueueWithRemove<E> {
             // TODO: Do not remove `head` and `tail` physically to make
             // TODO: the algorithm simpler. In case a tail node is logically removed,
             // TODO: it will be removed physically by `enqueue(..)`.
-            if (markExtractedOrRemoved()) {
-                if (this != tail.get() && this != head.get()) {
-                    val prevNode = findPrevious()
-                    prevNode?.next?.compareAndSet(this, this.next.get())
-                }
-                return true
+            val result = markExtractedOrRemoved()
+
+            if (this == tail.get() || this == head.get()) {
+                return result
             }
-            return false
+
+            val prevNode = findPrevious()
+            prevNode?.next?.compareAndSet(this, this.next.get())
+
+            return result
         }
 
         fun findPrevious(): Node? {
             var rez = head.get()
-            while (rez != null) {
+            while (true) {
                 val nextNode = rez.next.get()
-                if (nextNode == this)
+                if (nextNode == this || nextNode == null)
                     return rez
-                if (nextNode == null)
-                    return null
                 rez = nextNode
             }
-            return null
         }
     }
 }
