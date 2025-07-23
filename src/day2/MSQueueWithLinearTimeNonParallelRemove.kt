@@ -2,6 +2,7 @@
 
 package day2
 
+import day2.MSQueueWithOnlyLogicalRemove.Node
 import java.util.concurrent.atomic.*
 
 class MSQueueWithLinearTimeNonParallelRemove<E> : QueueWithRemove<E> {
@@ -18,7 +19,21 @@ class MSQueueWithLinearTimeNonParallelRemove<E> : QueueWithRemove<E> {
         // TODO: When adding a new node, check whether
         // TODO: the previous tail is logically removed.
         // TODO: If so, remove it physically from the linked list.
-        TODO("Implement me!")
+        val newNode = Node(element)
+        while (true) {
+            val curTail = tail.get()
+            val curTailNext = curTail.next
+            if (curTailNext.compareAndSet(null, newNode)) {
+                tail.compareAndSet(curTail, newNode)
+                if (curTail.extractedOrRemoved) {
+                    curTail.remove()
+                }
+                return
+            } else {
+                // Move tail to the actual state of the list
+                tail.compareAndSet(curTail, curTail.next.get())
+            }
+        }
     }
 
     override fun dequeue(): E? {
@@ -26,7 +41,19 @@ class MSQueueWithLinearTimeNonParallelRemove<E> : QueueWithRemove<E> {
         // TODO: mark the node that contains the extracting
         // TODO: element as "extracted or removed", restarting
         // TODO: the operation if this node has already been removed.
-        TODO("Implement me!")
+        while (true) {
+            val curHead = head.get()
+            val newHead = curHead.next.get()
+            if (newHead == null)
+                return null
+            if (head.compareAndSet(curHead, newHead)) {
+                if (newHead.markExtractedOrRemoved()) {
+                    val rez = newHead.element
+                    newHead.element = null
+                    return rez
+                }
+            }
+        }
     }
 
     override fun remove(element: E): Boolean {
@@ -63,7 +90,7 @@ class MSQueueWithLinearTimeNonParallelRemove<E> : QueueWithRemove<E> {
     }
 
     // TODO: Node is an inner class for accessing `head` in `remove()`
-    private inner class Node(
+    inner class Node(
         var element: E?
     ) {
         val next = AtomicReference<Node?>(null)
@@ -97,7 +124,27 @@ class MSQueueWithLinearTimeNonParallelRemove<E> : QueueWithRemove<E> {
             // TODO: Do not remove `head` and `tail` physically to make
             // TODO: the algorithm simpler. In case a tail node is logically removed,
             // TODO: it will be removed physically by `enqueue(..)`.
-            TODO("Implement me!")
+            if (markExtractedOrRemoved()) {
+                if (this != tail.get() && this != head.get()) {
+                    val prevNode = findPrevious()
+                    prevNode?.next?.compareAndSet(this, this.next.get())
+                }
+                return true
+            }
+            return false
+        }
+
+        fun findPrevious(): Node? {
+            var rez = head.get()
+            while (rez != null) {
+                val nextNode = rez.next.get()
+                if (nextNode == this)
+                    return rez
+                if (nextNode == null)
+                    return null
+                rez = nextNode
+            }
+            return null
         }
     }
 }
