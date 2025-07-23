@@ -41,9 +41,6 @@ class MSQueue<E> : Queue<E> {
             if (head.compareAndSet(curHead, newHead)) {
                 val rez = newHead?.element
                 newHead?.element = null
-                // Clean-up old head not to have any references
-                curHead.next.set(null)
-                curHead.element = null
                 return rez
             }
         }

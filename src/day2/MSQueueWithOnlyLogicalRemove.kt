@@ -1,5 +1,6 @@
 package day2
 
+import day1.MSQueue.Node
 import java.util.concurrent.atomic.*
 
 class MSQueueWithOnlyLogicalRemove<E> : QueueWithRemove<E> {
@@ -14,7 +15,17 @@ class MSQueueWithOnlyLogicalRemove<E> : QueueWithRemove<E> {
 
     override fun enqueue(element: E) {
         // TODO: Copy your implementation.
-        TODO("Implement me!")
+        val newNode = Node(element)
+        while (true) {
+            val curTail = tail.get()
+            val curTailNext = curTail.next
+            if (curTailNext.compareAndSet(null, newNode)) {
+                tail.compareAndSet(curTail, newNode)
+                return
+            }
+            // Move tail to the actual state of the list
+            tail.compareAndSet(curTail, curTail.next.get())
+        }
     }
 
     override fun dequeue(): E? {
@@ -24,7 +35,25 @@ class MSQueueWithOnlyLogicalRemove<E> : QueueWithRemove<E> {
         // TODO: mark the node that contains the extracting
         // TODO: element as "extracted or removed", restarting
         // TODO: the operation if this node has already been removed.
-        TODO("Implement me!")
+        while (true) {
+            val curHead = head.get()
+            val curTail = tail.get()
+            val newHead = curHead.next.get()
+            if (curHead == curTail) {
+                if (newHead == null) {
+                    return null
+                } else {
+                    tail.compareAndSet(curTail, curTail.next.get())
+                }
+            }
+            if (head.compareAndSet(curHead, newHead)) {
+                if (newHead?.markExtractedOrRemoved() == true) {
+                    val rez = newHead.element
+                    newHead.element = null
+                    return rez
+                }
+            }
+        }
     }
 
     override fun remove(element: E): Boolean {
@@ -81,7 +110,7 @@ class MSQueueWithOnlyLogicalRemove<E> : QueueWithRemove<E> {
             // TODO: operation should return `true`.
             // TODO: Otherwise, the node is already either extracted or removed,
             // TODO: so the operation should return `false`.
-            TODO("Implement me!")
+            return markExtractedOrRemoved()
         }
     }
 }
