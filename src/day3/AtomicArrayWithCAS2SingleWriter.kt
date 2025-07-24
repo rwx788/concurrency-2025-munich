@@ -18,7 +18,16 @@ class AtomicArrayWithCAS2SingleWriter<E : Any>(size: Int, initialValue: E) {
 
     fun get(index: Int): E {
         // TODO: the cell can store CAS2Descriptor
-        return array[index] as E
+        val value = array[index]
+        return when {
+            value is AtomicArrayWithCAS2SingleWriter<*>.CAS2Descriptor -> {
+                when (value.status.get()) {
+                    SUCCESS -> (if (index == value.index1) value.update1 else value.update2) as E
+                    FAILED, UNDECIDED -> (if (index == value.index1) value.expected1 else value.expected2) as E
+                }
+            }
+            else -> value as E
+        }
     }
 
     fun cas2(
@@ -40,13 +49,40 @@ class AtomicArrayWithCAS2SingleWriter<E : Any>(size: Int, initialValue: E) {
     ) {
         val status = AtomicReference(UNDECIDED)
 
+        fun installDescriptor(index: Int, expected: E): Boolean {
+            return array.compareAndSet(index, expected, this)
+        }
+
         fun apply() {
             // TODO: Install the descriptor, update the status, and update the cells;
             // TODO: create functions for each of these three phases.
             // TODO: In this task, only one thread can call cas2(..),
             // TODO: so cas2(..) calls cannot be executed concurrently.
+            val (firstCell, secondCell) = sortedMapOf(
+                index1 to UpdateTuple(expected1, update1),
+                index2 to UpdateTuple(expected2, update2)
+            ).toList()
+
+            if (!installDescriptor(firstCell.first, firstCell.second.expected)) {
+                status.set(FAILED)
+                return
+            }
+            if (!installDescriptor(secondCell.first, secondCell.second.expected)) {
+                status.set(FAILED)
+                array.set(firstCell.first, firstCell.second.expected)
+                return
+            }
+
+            status.set(SUCCESS)
+            array.set(firstCell.first, firstCell.second.update)
+            array.set(secondCell.first, secondCell.second.update)
         }
     }
+
+    data class UpdateTuple<T>(
+        val expected: T,
+        val update: T
+    )
 
     enum class Status {
         UNDECIDED, SUCCESS, FAILED

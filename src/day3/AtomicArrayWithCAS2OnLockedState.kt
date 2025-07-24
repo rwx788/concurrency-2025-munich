@@ -33,9 +33,11 @@ class AtomicArrayWithCAS2OnLockedState<E : Any>(size: Int, initialValue: E) {
         while (true) {
             val value = array[index]
             when {
+                value === expected -> {
+                    if (array.compareAndSet(index, expected, LOCKED))
+                        return true
+                }
                 value === LOCKED -> continue
-                value === expected -> if (array.compareAndSet(index, expected, LOCKED))
-                    return true
                 else -> return false
             }
         }
@@ -48,20 +50,20 @@ class AtomicArrayWithCAS2OnLockedState<E : Any>(size: Int, initialValue: E) {
         require(index1 != index2) { "The indices should be different" }
         // TODO: Make me thread-safe by "locking" the cells
         // TODO: via atomically changing their states to LOCKED.
-        val updates = sortedMapOf(
+        val (firstCell, secondCell) = sortedMapOf(
             index1 to UpdateTuple(expected1, update1),
             index2 to UpdateTuple(expected2, update2)
         ).toList()
 
-        if(!lockCell(updates[0].first, updates[0].second.expected)) {
+        if(!lockCell(firstCell.first, firstCell.second.expected)) {
             return false
         }
-        if(!lockCell(updates[1].first, updates[1].second.expected)) {
-            array.set(updates[0].first, updates[0].second.expected)
+        if(!lockCell(secondCell.first, secondCell.second.expected)) {
+            array.set(firstCell.first, firstCell.second.expected)
             return false
         }
-        array.set(updates[0].first, updates[0].second.update)
-        array.set(updates[1].first, updates[1].second.update)
+        array.set(firstCell.first, firstCell.second.update)
+        array.set(secondCell.first, secondCell.second.update)
         return true
     }
 }
