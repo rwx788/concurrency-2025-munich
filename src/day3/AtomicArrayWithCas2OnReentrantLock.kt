@@ -19,7 +19,13 @@ class AtomicArrayWithCas2OnReentrantLock<E : Any>(size: Int, initialValue: E) {
 
     fun get(index: Int): E {
         // TODO: Guard this function with the cell lock.
-        return array[index]
+        try {
+            locks[index].lock()
+            return array[index]
+        } finally {
+            locks[index].unlock()
+        }
+
     }
 
     fun cas2(
@@ -29,12 +35,22 @@ class AtomicArrayWithCas2OnReentrantLock<E : Any>(size: Int, initialValue: E) {
         require(index1 != index2) { "The indices should be different" }
         // TODO: Guard this function with the cell locks
         // TODO: following the fine-grained locking approach.
-        if (array[index1] === expected1 && array[index2] === expected2) {
-            array.set(index1, update1)
-            array.set(index2, update2)
-            return true
-        } else {
-            return false
+        try {
+            arrayOf(index1, index2).sortedArray().forEach {
+                locks[it].lock()
+            }
+
+            if (array[index1] === expected1 && array[index2] === expected2) {
+                array.set(index1, update1)
+                array.set(index2, update2)
+                return true
+            } else {
+                return false
+            }
+        } finally {
+            arrayOf(index1, index2).forEach {
+                locks[it].unlock()
+            }
         }
     }
 }
