@@ -16,8 +16,15 @@ class DoubleCompareSingleSet<E>(initialCellValue: E) {
      * Reads the Cell value.
      */
     fun getCell(): E {
-        // TODO: 'cell' can store DCSSDescriptor
-        return cell.get() as E
+        // 'cell' can store DCSSDescriptor
+        while (true) {
+            val curValue = cell.get()
+            if (curValue is DoubleCompareSingleSet<*>.DcssDescriptor) {
+                curValue.complete()
+                continue
+            }
+            return curValue as E
+        }
     }
 
     /**
@@ -32,8 +39,9 @@ class DoubleCompareSingleSet<E>(initialCellValue: E) {
         expectedCas2Status: Cas2Status
     ): Boolean {
         val descriptor = DcssDescriptor(expectedCellState, updateCellState, expectedCas2Status)
-        descriptor.install()
-        descriptor.complete()
+        if (descriptor.install())
+            descriptor.complete()
+
         return descriptor.status.get() == DCSSStatus.SUCCESS
     }
 
@@ -49,13 +57,45 @@ class DoubleCompareSingleSet<E>(initialCellValue: E) {
             // TODO: returning `true` on success
             // TODO: or `false` if the value is not the expected one.
             // TODO: Importantly, other threads should not help install the descriptor!
-            TODO("Implement me!")
+            while (true) {
+                val curValue = cell.get()
+                when (curValue) {
+                    this -> return true
+                    expectedCellState -> if (cell.compareAndSet(curValue, this)) {
+                        return true
+                    }
+
+                    is DoubleCompareSingleSet<*>.DcssDescriptor -> {
+                        curValue.complete()
+                        continue
+                    }
+
+                    else -> return false
+                }
+            }
         }
 
         // Other operations can call this function for helping.
         fun complete() {
-            // TODO: (1) Apply logically: check whether 'b' == expectedB and update the status
-            // TODO: (2) Apply physically: update 'a'
+            // (1) Apply logically: check whether cas2status == expectedStatus and update the descriptor status
+            val currentCas2Status = getStatus()
+
+            // Only try to update status if it's still UNDECIDED
+            if (status.get() == DCSSStatus.UNDECIDED) {
+                if (expectedStatus == currentCas2Status) {
+                    status.compareAndSet(DCSSStatus.UNDECIDED, DCSSStatus.SUCCESS)
+                } else {
+                    status.compareAndSet(DCSSStatus.UNDECIDED, DCSSStatus.FAILED)
+                }
+            }
+
+            // (2) Apply physically: update the cell based on the final status
+            val finalStatus = status.get()
+            if (finalStatus == DCSSStatus.SUCCESS) {
+                cell.compareAndSet(this, updateCellState)
+            } else if (finalStatus == DCSSStatus.FAILED) {
+                cell.compareAndSet(this, expectedCellState)
+            }
         }
     }
 
