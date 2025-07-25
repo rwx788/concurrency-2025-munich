@@ -19,13 +19,7 @@ class TreiberStackWithEliminationTest : StackTest(TreiberStackWithElimination())
     @Test // override this function so JUnit sorts the tests correctly
     override fun stressTest() = super.stressTest()
 
-    override fun Options<*, *>.customConfiguration() {
-        if (this is ModelCheckingOptions) {
-            invocationsPerIteration(10_000)
-        }
-    }
-
-    //    @Test
+    @Test
     fun testEliminationIsUsed() {
         var eliminationUsed = false
         val s = object : TreiberStackWithElimination<Int>() {
