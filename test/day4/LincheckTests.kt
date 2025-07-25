@@ -2,9 +2,15 @@ package day4
 
 import day1.*
 import org.jetbrains.lincheck.Lincheck
+import org.jetbrains.lincheck.datastructures.ModelCheckingOptions
+import org.jetbrains.lincheck.datastructures.Operation
 import org.junit.*
+import java.time.Instant
+import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.*
 import kotlin.concurrent.*
+import kotlin.random.Random
 
 
 /* TODO: Let's write your first Lincheck test.
@@ -56,43 +62,70 @@ class CounterTest {
 class FlatCombiningQueueWithTrickyBugTest {
     @Test
     fun testHelping() {
-        val lockReleases = AtomicInteger(0)
-        val q = object : FlatCombiningQueueWithTrickyBug<Int>() {
-            override fun releaseLock() {
-                super.releaseLock()
-                lockReleases.incrementAndGet()
+        Lincheck.runConcurrentTest {
+            val lockReleases = AtomicInteger(0)
+            val q = object : FlatCombiningQueueWithTrickyBug<Int>() {
+                override fun releaseLock() {
+                    super.releaseLock()
+                    lockReleases.incrementAndGet()
+                }
             }
-        }
-        runParallelQueueOperations(q)
-        check(lockReleases.get() <= THREADS * ENQ_DEQ_PAIRS_PER_THREAD) {
-            "At least one operation acquired the lock twice"
-        }
-        check(lockReleases.get() < THREADS * ENQ_DEQ_PAIRS_PER_THREAD) {
-            "The combiner does not help other threads"
-        }
-        lockReleases.set(0)
-        runParallelQueueOperations(q)
-        check(lockReleases.get() <= THREADS * ENQ_DEQ_PAIRS_PER_THREAD) {
-            "At least one operation acquired the lock twice"
-        }
-        check(lockReleases.get() < THREADS * ENQ_DEQ_PAIRS_PER_THREAD) {
-            "The combiner helped other threads during the first execution, " + "but did not help during the second one. " + "Probably, you clean the array slots incorrectly."
+            runParallelQueueOperations(q)
+            check(lockReleases.get() <= THREADS * ENQ_DEQ_PAIRS_PER_THREAD) {
+                "At least one operation acquired the lock twice"
+            }
+            check(lockReleases.get() < THREADS * ENQ_DEQ_PAIRS_PER_THREAD) {
+                "The combiner does not help other threads"
+            }
+            lockReleases.set(0)
+            runParallelQueueOperations(q)
+            check(lockReleases.get() <= THREADS * ENQ_DEQ_PAIRS_PER_THREAD) {
+                "At least one operation acquired the lock twice"
+            }
+            check(lockReleases.get() < THREADS * ENQ_DEQ_PAIRS_PER_THREAD) {
+                "The combiner helped other threads during the first execution, " + "but did not help during the second one. " + "Probably, you clean the array slots incorrectly."
+            }
         }
     }
 
+    val latch = CountDownLatch(1)
+
     private fun runParallelQueueOperations(q: Queue<Int>) {
-        (1..THREADS).map {
-            thread {
-                repeat(ENQ_DEQ_PAIRS_PER_THREAD) {
-                    q.enqueue(it)
-                    q.dequeue()
-                }
-            }
-        }.forEach { it.join() }
+        val threads = (1..THREADS).map {
+            WorkerWithCountDownLatch("[ Thread $it ]", latch, ENQ_DEQ_PAIRS_PER_THREAD, q)
+        }.toList()
+
+        latch.countDown();
+        threads.forEach { it.join() }
     }
 
     private val THREADS = 2
-    private val ENQ_DEQ_PAIRS_PER_THREAD = 1000_000
+    private val ENQ_DEQ_PAIRS_PER_THREAD = 1_000_000
+
+
+}
+
+class WorkerWithCountDownLatch(
+    name: String,
+    private val latch: CountDownLatch,
+    private val repeatCount: Int,
+    private val q: Queue<Int>
+) : Thread(name) {
+
+    override fun run() {
+        val i = Random.nextInt(10)
+        latch.await()
+
+        repeat(repeatCount) {
+            if (it % i == 0) {
+                q.enqueue(it)
+                q.dequeue()
+            } else {
+                q.dequeue()
+                q.enqueue(it)
+            }
+        }
+    }
 }
 
 /* TODO: Write a Lincheck test for ConcurrentLinkedDeque
@@ -103,5 +136,27 @@ class FlatCombiningQueueWithTrickyBugTest {
    TODO: See the guide for instructions:
          https://kotlinlang.org/docs/introduction.html#next-step
  */
-class ConcurrentLinkedDequeTest {
+class ConcurrentDequeTest {
+    private val deque = ConcurrentLinkedDeque<Int>()
+
+    @Operation
+    fun addFirst(e: Int) = deque.addFirst(e)
+
+    @Operation
+    fun addLast(e: Int) = deque.addLast(e)
+
+    @Operation
+    fun pollFirst() = deque.pollFirst()
+
+    @Operation
+    fun pollLast() = deque.pollLast()
+
+    @Operation
+    fun peekFirst() = deque.peekFirst()
+
+    @Operation
+    fun peekLast() = deque.peekLast()
+
+    @Test
+    fun modelCheckingTest() = ModelCheckingOptions().check(this::class)
 }
