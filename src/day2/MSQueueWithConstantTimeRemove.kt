@@ -18,7 +18,17 @@ class MSQueueWithConstantTimeRemove<E> : QueueWithRemove<E> {
         // TODO: When adding a new node, check whether
         // TODO: the previous tail is logically removed.
         // TODO: If so, remove it physically from the linked list.
-        TODO("Implement me!")
+        while (true) {
+            val currentTail = tail.get()
+            val node = Node(element, currentTail)
+            if (currentTail.next.compareAndSet(null, node)) {
+                if (currentTail.extractedOrRemoved) currentTail.physicalRemove()
+                tail.compareAndSet(currentTail, node)
+                return
+            } else {
+                tail.compareAndSet(currentTail, currentTail.next.get())
+            }
+        }
     }
 
     override fun dequeue(): E? {
@@ -26,7 +36,23 @@ class MSQueueWithConstantTimeRemove<E> : QueueWithRemove<E> {
         // TODO: mark the node that contains the extracting
         // TODO: element as "extracted or removed", restarting
         // TODO: the operation if this node has already been removed.
-        TODO("Implement me!")
+        while (true) {
+            val curHead = head.get()
+            val curTail = tail.get()
+            val curHeadNext = curHead.next.get() ?: return null
+
+            curHeadNext.prev.set(null)
+            // If null - queue is empty
+            if (curHead == curTail) {
+                tail.compareAndSet(curTail, curTail.next.get())
+            } else {
+                if (head.compareAndSet(curHead, curHeadNext)) {
+                    if (curHeadNext.markExtractedOrRemoved()) {
+                        return curHeadNext.element
+                    }
+                }
+            }
+        }
     }
 
     override fun remove(element: E): Boolean {
@@ -117,7 +143,27 @@ class MSQueueWithConstantTimeRemove<E> : QueueWithRemove<E> {
             // TODO: it is totally fine to have a bounded number of removed nodes
             // TODO: in the linked list, especially when it significantly simplifies
             // TODO: the algorithm.
-            TODO("Implement me!")
+            if (markExtractedOrRemoved()) {
+                physicalRemove()
+                return true
+            }
+            return false
+        }
+
+        fun physicalRemove() {
+            val curNext = next.get() ?: return
+            val curPrev = prev.get() ?: return
+            curPrev.next.set(curNext)
+            curNext.prev.setIfNotNull(curPrev)
+            if (curPrev.extractedOrRemoved) curPrev.physicalRemove()
+            if (curNext.extractedOrRemoved) curNext.physicalRemove()
+        }
+
+        fun <T> AtomicReference<T>.setIfNotNull(value: T) {
+            while (true) {
+                val cur = get() ?: break
+                if (compareAndSet(cur, value)) break
+            }
         }
     }
 }
